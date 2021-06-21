@@ -1,0 +1,81 @@
+*************************************************************************************************************************************************************
+* The following steps were used to merge mutliple VCF files using list of common SNPs between files. The code extended to export the merged file to Plink   *
+* binary files to merge with SNP array Plink binary files to be used in the genomic analysis.                                                               *
+*************************************************************************************************************************************************************
+
+The following VCF files contain the sequence data 
+1.	A.vcf
+2.	B.vcf
+3.	C.vcf
+4.	D.vcf
+This file contain a list of common SNPs between files and list of final indivduals we would like to keep. 
+list.txt
+list.IND.txt
+
+1. Extracting the common SNPs from each VCF file 
+vcftools --vcf A.vcf --positions list.txt --recode --recode-INFO-all --out A.filtered
+vcftools --vcf B.vcf --positions list.txt --recode --recode-INFO-all --out B.filtered
+vcftools --vcf C.vcf --positions list.txt --recode --recode-INFO-all --out C.filtered
+vcftools --vcf D.vcf --positions list.txt --recode --recode-INFO-all --out D.filtered
+
+2. Compressing the VCF files 
+vcftools --vcf A.filtered.recode.vcf --remove-indels --recode --recode-INFO-all --stdout | bgzip > A.comp.vcf.gz
+vcftools --vcf B.filtered.recode.vcf --remove-indels --recode --recode-INFO-all --stdout | bgzip > B.comp.vcf.gz
+vcftools --vcf C.filtered.recode.vcf --remove-indels --recode --recode-INFO-all --stdout | bgzip > C.comp.vcf.gz
+vcftools --vcf D.filtered.recode.vcf --remove-indels --recode --recode-INFO-all --stdout | bgzip > D.comp.vcf.gz
+
+3. Indexing the commpressed files
+tabix -p vcf A.comp.vcf.gz
+tabix -p vcf B.comp.vcf.gz
+tabix -p vcf C.comp.vcf.gz
+tabix -p vcf D.comp.vcf.gz
+
+4. Merging files
+vcf-merge -d A.comp.vcf.gz B.comp.vcf.gz C.comp.vcf.gz D.comp.vcf.gz | bgzip -c > A.B.C.D.vcf.gz
+
+5. Indexing the merged file 
+tabix -p vcf A.B.C.D.vcf.gz
+
+6. Unzipping the merged file 
+vcftools --gzvcf A-B-C.D.vcf.gz  --recode --recode-INFO-all --out A.B.C.D
+
+7. Keeping list of specifc individuals and minor allele frequency threshold of 0.003
+vcftools --vcf A.B.C.D.recode.vcf --keep List.IND.txt --maf 0.003 --recode --recode-INFO-all --out A.B.C.D.IND
+
+8. Creating genotype matrix coded as 012 where 0 and 2 were coded for homogeneous genotypes, 1 for heterogeneous genotypes, and -1 for missing  
+vcftools --vcf  A.B.C.D.IND.recode.vcf --012 --out A.B.C.D.geno 
+*Generating 3 different files 1. the genotype matrix    2. List of IDs of individuals ,  3. List of markers with their positions
+
+9. Exporting data into Plink binary format
+plink --vcf A.B.C.D.IND.recode.vcf --allow-extra-chr --double-id --vcf-half-call 'm' --recode --out  A.B.C.D.IND.Ped
+#if there is any half calls will be set as missing
+plink --file A.B.C.D.IND --allow-extra-chr --double-id --make-bed --out A.B.C.D.IND.binary
+
+*This Ped file contain the plink ped of SNP array data. (E.ped)
+10. Merging the 2 ped files from sequence and snp array
+plink --file A.B.C.D.IND.Ped --merge E --allow-extra-chr --recode --out All.Geno
+
+In some cases, during the merging process I received this error
+ Error: N variants with 3+ alleles present.                                    
+ * If you believe this is due to strand inconsistency, try --flip with       
+ merged-merge.missnp.                                                          
+(Warning: if this seems to work, strand errors involving SNPs with A/T or C/G  alleles probably remain in your data.  If LD between nearby SNPs is high, --flip-scan should detect them.)                                              * If you are dealing with genuine multiallelic variants, we recommend exporting  that subset of the data to VCF (via e.g. '--recode vcf'), merging with another tool/script, and then importing the result; PLINK is not yet suited to handling them.                                                           
+
+If you received this error, you can exclude these  variants from the exome data. They are already stored in the file merged-merge.missnp using the following command
+plink --file A.B.C.D.IND.Ped --exclude merged-merge.missnp --allow-extra-chr --recode --out A.B.C.D.IND.Ped.filtered
+
+Then the final merge step would be
+plink --file A.B.C.D.IND.Ped.filtered.Ped --merge E --allow-extra-chr --recode --out All.Geno
+
+
+
+
+
+
+
+
+
+
+
+
+
